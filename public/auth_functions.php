@@ -780,5 +780,3 @@ $app->group('/auth', function (RouteCollectorProxy $group) {
         })->setName('order-experience');
     });
 });
-
-?>
