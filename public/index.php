@@ -36,6 +36,9 @@ $app->addErrorMiddleware(true, true, true);
 /*************** Auth Functions ***************/
 require('auth_functions.php');
 
+/*************** Store Functions ***************/
+require('store_functions.php');
+
 $app->get('/', function (Request $request, Response $response, $args) {
     $response->getBody()->write("Hello world!");
     return $response;
