@@ -735,115 +735,41 @@ $app->group('/stores', function (RouteCollectorProxy $group) {
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
             }
 
-        })->setName('list-experiences-slider');
+        })->setName('list-stores-app-api');
 
-        // list experiences
-        $group->get('/list-venue-experiences/{slug}', function (Request $request, Response $response, array $args) {
-            // Route: /experiences/journey/list-venue-experiences/{slug}
+        // list store's branches
+        $group->get('/list-store-branches/{store_id:[0-9]+}', function (Request $request, Response $response, array $args) {
+            // Route: /stores/journey/list-store-branches/{store_id}
 
-            $locationSlug = $args['slug'];
-
-            $experienceListingDetails = new stdClass();
-            $experienceListingDetails->experiences = array();
+            $storeId = $args['store_id'] ?? null;
             
             try
             {
                 $db = getPgDB();
-                $venue_id = null;
 
-                // VENUE DETAILS
-                $sth1 = $db->prepare("SELECT l.location_id, l.name AS location_name, l.phone AS location_phone, l.email AS location_email,
-                                        l.address AS location_address, l.details AS location_description, l.town_id, t.town,
-                                        l.image AS poster, other_image AS img_2, image3 AS img_3, image4 AS img_4, image5 AS img_5
-                                    FROM kb.locations l
+                $sth = $db->prepare("SELECT b.branch_id, b.name AS branch_name, t.town AS branch_town, b.address,
+                                        b.gps_coordinates AS branch_gps, b.open_time, b.close_time, b.is_24_hrs,
+                                        b.icon AS branch_logo
+                                    FROM stores.branches b
                                     LEFT JOIN public.towns t USING (town_id)
-                                    WHERE l.slug = :locationSlug");
-                $sth1->execute( array( ':locationSlug' => $locationSlug ) );
-                $locationDetails = $sth1->fetch(PDO::FETCH_OBJ);
-                $venue_id = (isset($locationDetails)) ? $locationDetails->location_id : null;
-                $locationDetails->location_description = (isset($locationDetails) && isset($locationDetails->location_description)) ? strip_tags($locationDetails->location_description) : null;
-                $experienceListingDetails->location = $locationDetails;
-                unset($sth1,$locationDetails);
+                                    WHERE b.store_id = :storeId");
+                $sth->execute( array( ':storeId' => $storeId ) );
+                $branches = $sth->fetchAll(PDO::FETCH_OBJ);
+                unset($db,$sth);
 
-                // VENUE OPEN HOURS
-                $sth_1 = $db->prepare("SELECT o.location_open_hour_id AS id, o.day_id, d.name, open_time, close_time 
-                                        FROM kb.location_open_hours o
-                                        INNER JOIN kb.days d USING (day_id)
-                                        WHERE location_id = :locationId
-                                        ORDER BY day_id ASC");
-                $sth_1->execute( array( ':locationId' => $venue_id ) );
-                $openHours = $sth_1->fetchAll(PDO::FETCH_OBJ);
-                $experienceListingDetails->location->open_hours = ($openHours) ? $openHours : array();
-                unset($sth_1,$openHours);
-
-                // VENUE'S EXPERIENCES
-                $sth2 = $db->prepare("SELECT e.experience_id, e.name, e.slug, e.image AS poster, l.name AS venue, e.description, 
-                                        e.indemnity_form, e.town_id, t.town AS location
-                                    FROM kb.experiences e
-                                    INNER JOIN kb.locations l ON e.venue_id = l.location_id
-                                    LEFT JOIN public.towns t ON e.town_id = t.town_id
-                                    WHERE e.is_disabled IS FALSE
-                                    AND e.venue_id = :venue_id
-                                    ORDER BY e.name ASC");
-                $sth2->execute( array( ':venue_id' => $venue_id ) );
-                $experiences = $sth2->fetchAll(PDO::FETCH_OBJ);
-                unset($sth2);
-
-                if ($experiences && is_array($experiences)) {
-                    // EACH EXPERIENCE'S DATA
-
-                    for ($i=0; $i < count($experiences); $i++) { 
-                        // TICKET TYPES
-                        $qry3 = $db->prepare("SELECT xt.experience_ticket_type_id, xt.name, xt.price, xt.group_ticket, xt.group_quantity, xt.max_per_customer
-                                                FROM kb.experience_ticket_types xt
-                                                WHERE xt.experience_id = :experienceId
-                                                ORDER BY xt.experience_ticket_type_id ASC");
-                        $qry3->execute( array( ':experienceId' => $experiences[$i]->experience_id ) );
-                        $ticket_types = $qry3->fetchAll(PDO::FETCH_OBJ);
-                        $experiences[$i]->ticket_types = $ticket_types;
-                        unset($qry3,$ticket_types);
-
-                        // TIMESLOTS
-                        $qry4 = $db->prepare("SELECT xo.open_hour_id, xo.day_id, d.name AS day, xo.open_time, xo.close_time,
-                                                array_to_json(array_agg(row_to_json(xs))) AS time_slots
-                                            FROM kb.experience_open_hours xo
-                                            INNER JOIN kb.days d USING (day_id)
-                                            LEFT JOIN (
-                                                SELECT xs.timeslot_id, xs.open_hour_id, xs.start_time, xs.end_time, xs.use_time_interval AS use_interval, xs.time_interval, xs.max_people_per_slot 
-                                                FROM kb.experience_timeslots xs
-                                                WHERE xs.experience_id = :experienceId
-                                                ORDER BY xs.open_hour_id ASC
-                                            )xs USING (open_hour_id)
-                                            WHERE xo.experience_id = :experienceId
-                                            GROUP BY xo.open_hour_id, xo.day_id, d.name, xo.open_time, xo.close_time
-                                            ORDER BY xo.day_id ASC, xo.open_time ASC");
-                        $qry4->execute( array( ':experienceId' => $experiences[$i]->experience_id ) );
-                        $timeslots = $qry4->fetchAll(PDO::FETCH_OBJ);
-                        if ($timeslots) {
-                            foreach ($timeslots as $key => $value) {
-                                $timeslots[$key]->time_slots = json_decode($value->time_slots) ?? null;
-                            }
+                if ($branches && is_array($branches)) {
+                    for ($i=0; $i < count($branches); $i++) { 
+                        if (preg_match("/\((-?\d+\.\d+),(-?\d+\.\d+)\)/", $branches[$i]->branch_gps, $matches)) {
+                            $branches[$i]->latitude = $matches[1];   // First captured group is the latitude
+                            $branches[$i]->longitude = $matches[2];  // Second captured group is the longitude
+                        } else {
+                            $branches[$i]->latitude = null;
+                            $branches[$i]->longitude = null;
                         }
-                        $experiences[$i]->time_slots = $timeslots;
-                        unset($qry4,$timeslots);
-
-                        // ADDONS | CONCESSSIONS
-                        $qry5 = $db->prepare("SELECT c.concession_id, c.name, c.unit_price AS price, c.icon, max_selectable, min_selectable 
-                                            FROM kb.concessions c
-                                            WHERE experience_id = :experienceId
-                                            ORDER BY concession_id ASC");
-                        $qry5->execute( array( ':experienceId' => $experiences[$i]->experience_id ) );
-                        $addons = $qry5->fetchAll(PDO::FETCH_OBJ);
-                        $experiences[$i]->addons = $addons;
-                        unset($qry5,$addons);
-
-                        array_push($experienceListingDetails->experiences, $experiences[$i]);
                     }
                 }
 
-                unset($db,$experiences);
-
-                $payload =   json_encode(array('response' => 'success', 'data' => $experienceListingDetails ));
+                $payload =   json_encode(array('response' => 'success', 'data' => $branches ));
                 $response->getBody()->write($payload);
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
             }
@@ -853,7 +779,7 @@ $app->group('/stores', function (RouteCollectorProxy $group) {
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
             }
 
-        })->setName('list-front-end-venue-experiences');
+        })->setName('list-branches-app-api');
 
         // list experiences
         $group->get('/list-experiences', function (Request $request, Response $response, array $args) {
