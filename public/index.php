@@ -39,6 +39,9 @@ require('auth_functions.php');
 /*************** Store Functions ***************/
 require('store_functions.php');
 
+/*************** Product Functions ***************/
+require('product_functions.php');
+
 $app->get('/', function (Request $request, Response $response, $args) {
     $response->getBody()->write("Hello world!");
     return $response;

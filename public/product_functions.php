@@ -4,21 +4,21 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Routing\RouteCollectorProxy;
 
-$app->group('/stores', function (RouteCollectorProxy $group) {
+$app->group('/products', function (RouteCollectorProxy $group) {
     $group->map(['POST', 'GET', 'DELETE', 'PATCH', 'PUT'], '', function ($request, $response, array $args) {
         // Find, delete, patch or replace user identified by $args['id']
         // ...
         
         return $response;
-    })->setName('stores-endpoints');
+    })->setName('products-endpoints');
 
-    $group->group('/portal', function (RouteCollectorProxy $group) {
-        // Route for accessing dashboard experiences
+    $group->group('/categories', function (RouteCollectorProxy $group) {
+        // Route for accessing product categories
         $group->map(['POST', 'GET', 'DELETE', 'PATCH', 'PUT'], '/{id:[0-9]+}', function (Request $request, Response $response, array $args) {
             // Find, delete, patch or replace user identified by $args['id']
             // ...
             return $response;
-        })->setName('dashboard-experiences');
+        })->setName('product-categories');
 
         // list experiences
         $group->get('/list-experiences/{user_id:[0-9]+}', function (Request $request, Response $response, array $args) {
