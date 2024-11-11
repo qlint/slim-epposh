@@ -20,71 +20,70 @@ $app->group('/products', function (RouteCollectorProxy $group) {
             return $response;
         })->setName('product-categories');
 
-        // list experiences
-        $group->get('/list-experiences/{user_id:[0-9]+}', function (Request $request, Response $response, array $args) {
-            // Route: /experiences/dashboard/list-experiences/{user_id}
+        // list featured categorized products
+        $group->get('/list-featured-categorized-products/{branch_id:[0-9]+}', function (Request $request, Response $response, array $args) {
+            // Route: /products/categories/list-featured-categorized-products/{branch_id}
 
-            $userId = $args['user_id'];
+            $branchId = $args['branch_id'];
             
             try
             {
 
-                if ($userId == null || $userId == 0) {
-                    $payload =   json_encode(array('response' => 'error', 'message' => 'No data' ));
+                if ($branchId == null || $branchId == 0) {
+                    $payload =   json_encode( ['response' => 'error', 'message' => 'No data'] );
                     $response->getBody()->write($payload);
                     return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
                 } else {
                     $db = getPgDB();
 
-                    // PROFILE
-                    $qry = $db->prepare('SELECT u.user_id, u.name, u.email, up.tenant_id, up.first_name, up.last_name, up.phone,
-                                                up.is_staff, up.is_super_user, up.is_active
-                                            FROM kb.users u
-                                            INNER JOIN kb.user_profile up USING (user_id)
-                                            WHERE up.is_active IS TRUE AND up.user_id = :userId');
-                    $qry->execute( array( ':userId' => $userId ) );
-                    $profile = $qry->fetch(PDO::FETCH_OBJ);
-                    unset($qry1);
+                    $qry = $db->prepare('SELECT a.category_id, a.category_name, p.product_id, p.name, p.description, i.img AS photo, c.price
+                                                FROM (
+                                                    SELECT pc.branch_id, pc.product_id, pc.category_id, ct.name AS category_name,
+                                                        ROW_NUMBER() OVER (PARTITION BY pc.branch_id, pc.category_id, ct.name ORDER BY product_id) AS row_num
+                                                    FROM products.products_categories pc
+                                                    INNER JOIN products.categories ct USING (category_id)
+                                                    WHERE category_id IN (SELECT category_id FROM products.categories WHERE is_featured IS TRUE)
+                                                    AND branch_id = :branchId
+                                                )a
+                                                INNER JOIN products.products p ON a.product_id = p.product_id
+                                                LEFT JOIN products.products_images i ON p.product_id = i.product_id AND i.is_primary IS TRUE
+                                                LEFT JOIN products.products_pricing c ON p.product_id = c.product_id
+                                                WHERE a.row_num <= 3 -- this is the numner of items per category
+                                                AND p.status IS TRUE;');
+                    $qry->execute( [':branchId' => $branchId] );
+                    $results = $qry->fetchAll(PDO::FETCH_OBJ);
+                    unset($qry,$db);
 
-                    if ($profile) {
-                        $experiences = null;
+                    if ($results) {
+                        $products_list = [];
 
-                        // STAFF OR ADMIN
-                        if ( $profile->is_staff == true || $profile->is_super_user == true ) {
-                            // experiences
-                            $sth = $db->prepare("SELECT experience_id, e.name, e.slug, l.name AS venue, t.town, is_disabled, is_private
-                                                FROM kb.experiences e
-                                                LEFT JOIN kb.locations l ON e.venue_id = l.location_id
-                                                LEFT JOIN public.towns t ON e.town_id = t.town_id
-                                                ORDER BY experience_id DESC
-                                                LIMIT 200");
-                            $sth->execute( array() );
-                            $experiences = $sth->fetchAll(PDO::FETCH_OBJ);
-                            unset($sth);
-                        }
-                        
-                        // TENANTS
-                        if ($profile->is_staff == false && $profile->is_super_user == false && $profile->tenant_id != null) {
-                            // experiences
-                            $sth = $db->prepare("SELECT experience_id, e.name, e.slug, l.name AS venue, t.town, is_disabled, is_private
-                                                FROM kb.experiences e
-                                                LEFT JOIN kb.locations l ON e.venue_id = l.location_id
-                                                LEFT JOIN public.towns t ON e.town_id = t.town_id
-                                                WHERE e.tenant_id = :tenantId
-                                                ORDER BY experience_id DESC
-                                                LIMIT 200");
-                            $sth->execute( array(':tenantId' => $profile->tenant_id) );
-                            $experiences = $sth->fetchAll(PDO::FETCH_OBJ);
-                            unset($sth);
+                        foreach ($results as $key => $result) {
+                            $categoryId = $result->category_id;
+                            if (!isset($products_list[$categoryId])) {
+                                $products_list[$categoryId] = [
+                                    'category_id' => $categoryId,
+                                    'category_name' => $result->category_name,
+                                    'products' => [],
+                                ];
+                            }
+                            $products_list[$categoryId]['products'][] = [
+                                'product_id' => $result->product_id,
+                                'name' => $result->name,
+                                'description' => $result->description,
+                                'photo' => $result->photo,
+                                'price' => $result->price,
+                            ];
                         }
 
-                        $payload =   json_encode(array('response' => 'success', 'data' => $experiences ));
+                        $data = array_values($products_list);
+
+                        $payload =   json_encode( ['response' => 'success', 'data' => $data] );
                         $response->getBody()->write($payload);
 
-                        unset($db,$experiences,$profile);
+                        unset($results,$products_list);
                         return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
                     } else {
-                        $payload =   json_encode(array('response' => 'error', 'message' => 'No data' ));
+                        $payload =   json_encode( ['response' => 'error', 'message' => 'No data'] );
                         $response->getBody()->write($payload);
                         return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
                     }
@@ -92,12 +91,12 @@ $app->group('/products', function (RouteCollectorProxy $group) {
                 
             }
             catch(PDOException $e) {
-                $payload =   json_encode(array('response' => 'error', 'message' => $e->getMessage() ));
+                $payload =   json_encode( ['response' => 'error', 'message' => $e->getMessage()] );
                 $response->getBody()->write($payload);
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
             }
 
-        })->setName('dashboard-list-experiences');
+        })->setName('app-list-featured-categorized-products');
 
         // view experience
         $group->get('/view-experience/{experience_id:[0-9]+}', function (Request $request, Response $response, array $args) {

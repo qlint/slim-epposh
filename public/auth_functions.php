@@ -43,7 +43,7 @@ $app->group('/auth', function (RouteCollectorProxy $group) {
                                             INNER JOIN users.app_users u USING (app_user_id)
                                             WHERE u.active IS TRUE
                                             AND p.phone = :phone");
-                        $qry->execute( array( ':phone' => $userName ) );
+                        $qry->execute( [ ':phone' => $userName ] );
                     }
 
                     if ($mode == "e") {
@@ -52,7 +52,7 @@ $app->group('/auth', function (RouteCollectorProxy $group) {
                                             INNER JOIN users.app_users u USING (app_user_id)
                                             WHERE u.active IS TRUE
                                             AND p.email = :email");
-                        $qry->execute( array( ':email' => $userName ) );
+                        $qry->execute( [ ':email' => $userName ] );
                     }
                     
                     $fetchedUser = $qry->fetch(PDO::FETCH_OBJ);
@@ -64,9 +64,11 @@ $app->group('/auth', function (RouteCollectorProxy $group) {
                         $passHash = str_replace( '\/', '/', $passwordHash );
                         if ($passHash === false || !password_verify($passWord, $passHash)) {
                             // incorrect password
-                            $payload = json_encode(array('response' => 'error', 'code' => 3, 'message' => 'Wrong credentials'));
+                            $payload = json_encode( ['response' => 'error', 'code' => 3, 'message' => 'Wrong credentials'] );
                             $response->getBody()->write($payload);
-                            return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+                            return $response->withHeader('Content-Type', 'application/json')
+                                            ->withHeader('Content-Length', strlen($payload))
+                                            ->withStatus(401);
                         } else {
                             $user = new stdClass();
                             $user->user_id = $fetchedUser->user_id;
@@ -75,29 +77,37 @@ $app->group('/auth', function (RouteCollectorProxy $group) {
                             $user->phone = $fetchedUser->phone;
                             $user->last_gps_location = $fetchedUser->last_gps_location;
 
-                            $payload =   json_encode(array('response' => 'success', 'data' => $user ));
+                            $payload =   json_encode( [ 'response' => 'success', 'data' => $user ] );
                             unset($db,$fetchedUser,$user);
                         
                             $response->getBody()->write($payload);
-                            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+                            return $response->withHeader('Content-Type', 'application/json')
+                                            ->withHeader('Content-Length', strlen($payload))
+                                            ->withStatus(200);
                         }
                     } else {
-                        $payload = json_encode(array('response' => 'error', 'code' => 2, 'message' => 'Wrong credentials'));
+                        $payload = json_encode( ['response' => 'error', 'code' => 2, 'message' => 'Wrong credentials'] );
                         $response->getBody()->write($payload);
-                        return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+                        return $response->withHeader('Content-Type', 'application/json')
+                                        ->withHeader('Content-Length', strlen($payload))
+                                        ->withStatus(401);
                     }
 
                 } else {
                     // missing required parameters
-                    $payload = json_encode(array('response' => 'error', 'code' => 1, 'message' => 'Unable to log in'));
+                    $payload = json_encode( ['response' => 'error', 'code' => 1, 'message' => 'Unable to log in'] );
                     $response->getBody()->write($payload);
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+                    return $response->withHeader('Content-Type', 'application/json')
+                                    ->withHeader('Content-Length', strlen($payload))
+                                    ->withStatus(401);
                 }
                 
             } catch(PDOException $e) {
-                $payload = json_encode(array('response' => 'error', 'code' => 0, 'message' => $e->getMessage()));
+                $payload = json_encode( ['response' => 'error', 'code' => 0, 'message' => $e->getMessage()] );
                 $response->getBody()->write($payload);
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+                return $response->withHeader('Content-Type', 'application/json')
+                                ->withHeader('Content-Length', strlen($payload))
+                                ->withStatus(401);
             }
             
         })->setName('user-login');
