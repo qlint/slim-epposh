@@ -42,6 +42,9 @@ require('store_functions.php');
 /*************** Product Functions ***************/
 require('product_functions.php');
 
+/*************** Ads Functions ***************/
+require('ads_functions.php');
+
 $app->get('/', function (Request $request, Response $response, $args) {
     $response->getBody()->write("Hello world!");
     return $response;
